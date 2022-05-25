@@ -16,12 +16,9 @@ const Config = imports.misc.config;
 const X11 = imports.gi.GLib.getenv('XDG_SESSION_TYPE') == 'x11';
 const POST_40 = parseFloat(Config.PACKAGE_VERSION) >= 40;
 const POST_3_36 = parseFloat(Config.PACKAGE_VERSION) >= 3.36;
-const POST_3_32 = parseFloat(Config.PACKAGE_VERSION) >= 3.32;
 const Keymap = X11       ? imports.gi.Gdk.Keymap.get_default():
                POST_3_36 ? Clutter.get_default_backend().get_default_seat().get_keymap():
-			   POST_3_32 ? Clutter.get_default_backend().get_keymap():
-			               imports.gi.Gdk.Keymap.get_default();
-
+			               Clutter.get_default_backend().get_keymap();
 
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
@@ -34,17 +31,13 @@ const STYLE_NUMLOCK_ONLY = 'numlock';
 const STYLE_CAPSLOCK_ONLY = 'capslock';
 const STYLE_BOTH = 'both';
 const STYLE_SHOWHIDE = 'show-hide';
+const STYLE_SHOWHIDE_CAPSLOCK = 'show-hide-capslock';
 const NOTIFICATIONS = 'notification-preferences';
 const NOTIFICATIONS_OFF = 'off';
 const NOTIFICATIONS_ON = 'on';
 const NOTIFICATIONS_OSD = 'osd';
 
 let indicator;
-
-function main() {
-	init();
-	enable();
-}
 
 function init() {
 	Utils.initTranslations("lockkeys");
@@ -115,10 +108,7 @@ class LockKeysIndicator extends PanelMenu.Button {
 	}
 
 	addChildCompat(child) {
-		if (POST_3_32)
-			this.add_child(child);
-		else
-			this.actor.add_child(child);
+		this.add_child(child);
 	}
 
 	setActive(enabled) {
@@ -144,6 +134,8 @@ class LockKeysIndicator extends PanelMenu.Button {
 	handleSettingsChange(actor, event) {
 		if (this.config.isVisibilityStyle())
 			this.indicatorStyle = new VisibilityIndicator(this);
+		else if (this.config.isVisibilityStyleCapslock())
+			this.indicatorStyle = new VisibilityIndicatorCapslock(this);
 		else
 			this.indicatorStyle = new HighlightIndicator(this);
 		this.updateState();
@@ -275,22 +267,44 @@ class VisibilityIndicator extends GObject.Object{
 		this.config = panelButton.config;
 		this.numIcon = panelButton.numIcon;
 		this.capsIcon = panelButton.capsIcon;
+
+		this.numIcon.set_gicon(this.panelButton.getCustIcon('numlock-enabled-symbolic'));
+		this.capsIcon.set_gicon(this.panelButton.getCustIcon('capslock-enabled-symbolic'));
 	}
 
 	displayState(numlock_state, capslock_state) {
 		if (numlock_state) {
-			this.numIcon.set_gicon(this.panelButton.getCustIcon('numlock-enabled-symbolic'));
 			this.numIcon.show();
 		} else
 			this.numIcon.hide();
 
 		if (capslock_state) {
-			this.capsIcon.set_gicon(this.panelButton.getCustIcon('capslock-enabled-symbolic'));
 			this.capsIcon.show();
 		} else
 			this.capsIcon.hide();
 
 		this.panelButton.visible = numlock_state || capslock_state;
+	}
+});
+
+const VisibilityIndicatorCapslock = GObject.registerClass(
+class VisibilityIndicatorCapslock extends GObject.Object{
+	_init(panelButton) {
+		this.panelButton = panelButton;
+		this.config = panelButton.config;
+		this.capsIcon = panelButton.capsIcon;
+
+		panelButton.numIcon.hide();
+		this.capsIcon.set_gicon(this.panelButton.getCustIcon('capslock-enabled-symbolic'));
+	}
+
+	displayState(numlock_state, capslock_state) {
+		if (capslock_state) {
+			this.capsIcon.show();
+		} else
+			this.capsIcon.hide();
+
+		this.panelButton.visible = capslock_state;
 	}
 });
 
@@ -333,5 +347,10 @@ class Configuration extends GObject.Object{
 	isVisibilityStyle() {
 		let widget_style = this.settings.get_string(STYLE);
 		return widget_style == STYLE_SHOWHIDE;
+	}
+
+	isVisibilityStyleCapslock() {
+		let widget_style = this.settings.get_string(STYLE);
+		return widget_style == STYLE_SHOWHIDE_CAPSLOCK;
 	}
 });

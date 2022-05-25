@@ -23,13 +23,19 @@ const utils          = Me.imports.src.utils;
 const ShaderFactory  = Me.imports.src.ShaderFactory.ShaderFactory;
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// This effect looks a bit like the transporter effect from TNG.                        //
+// This effects dissolves your windows into a cloud of dust. For this, it uses an       //
+// approach similar to the Broken Glass effect. A dust texture is used to segment the   //
+// window texture into a set of layers. Each layer is then moved, sheared and scaled    //
+// randomly. Just a few layers are sufficient to create the illusion of many individual //
+// dust particles.                                                                      //
+// This effect is not available on GNOME 3.3x, due to the limitation described in the   //
+// documentation of vfunc_paint_target further down in this file.                       //
 //////////////////////////////////////////////////////////////////////////////////////////
 
 // The effect class can be used to get some metadata (like the effect's name or supported
 // GNOME Shell versions), to initialize the respective page of the settings dialog, as
 // well as to create the actual shader for the effect.
-var EnergizeB = class {
+var SnapOfDisintegration = class {
 
   // The constructor creates a ShaderFactory which will be used by extension.js to create
   // shader instances for this effect. The shaders will be automagically created using the
@@ -37,33 +43,64 @@ var EnergizeB = class {
   // newly created shader instance.
   constructor() {
     this.shaderFactory = new ShaderFactory(this.getNick(), (shader) => {
-      // We import Clutter in this function as it is not available in the preferences
-      // process. This creator function of the ShaderFactory is only called within GNOME
-      // Shell's process.
-      const Clutter = imports.gi.Clutter;
+      // We import these modules in this function as they are not available in the
+      // preferences process. This callback is only called within GNOME Shell's process.
+      const {Clutter, GdkPixbuf, Cogl} = imports.gi;
+
+      // Create the texture in the first call.
+      if (!this._dustTexture) {
+        const dustData    = GdkPixbuf.Pixbuf.new_from_resource('/img/dust.png');
+        this._dustTexture = new Clutter.Image();
+        this._dustTexture.set_data(dustData.get_pixels(), Cogl.PixelFormat.RGB_888,
+                                   dustData.width, dustData.height, dustData.rowstride);
+      }
 
       // Store uniform locations of newly created shaders.
-      shader._uColor = shader.get_uniform_location('uColor');
-      shader._uScale = shader.get_uniform_location('uScale');
+      shader._uDustTexture = shader.get_uniform_location('uDustTexture');
+      shader._uDustColor   = shader.get_uniform_location('uDustColor');
+      shader._uSeed        = shader.get_uniform_location('uSeed');
+      shader._uDustScale   = shader.get_uniform_location('uDustScale');
 
       // Write all uniform values at the start of each animation.
       shader.connect('begin-animation', (shader, settings) => {
-        const c = Clutter.Color.from_string(settings.get_string('energize-b-color'))[1];
+        // The dust particles will fade to this color over time.
+        const c = Clutter.Color.from_string(settings.get_string('snap-color'))[1];
+
+        // If we are currently performing integration test, the animation uses a fixed
+        // seed.
+        const testMode = settings.get_boolean('test-mode');
 
         // clang-format off
-        shader.set_uniform_float(shader._uColor, 3, [c.red / 255, c.green / 255, c.blue / 255]);
-        shader.set_uniform_float(shader._uScale, 1, [settings.get_double('energize-b-scale')]);
+        shader.set_uniform_float(shader._uDustColor, 4, [c.red / 255, c.green / 255, c.blue / 255, c.alpha / 255]);
+        shader.set_uniform_float(shader._uSeed,      2, [testMode ? 0 : Math.random(), testMode ? 0 : Math.random()]);
+        shader.set_uniform_float(shader._uDustScale, 1, [settings.get_double('snap-scale')]);
         // clang-format on
+      });
+
+      // This is required to bind the dust texture for drawing. Sadly, this seems to be
+      // impossible under GNOME 3.3x as this.get_pipeline() is not available. It was
+      // called get_target() back then but this is not wrapped in GJS.
+      // https://gitlab.gnome.org/GNOME/mutter/-/blob/gnome-3-36/clutter/clutter/clutter-offscreen-effect.c#L598
+      shader.connect('update-animation', (shader) => {
+        const pipeline = shader.get_pipeline();
+
+        // Use linear filtering for the window texture.
+        pipeline.set_layer_filters(0, Cogl.PipelineFilter.LINEAR,
+                                   Cogl.PipelineFilter.LINEAR);
+
+        // Bind the dust texture.
+        pipeline.set_layer_texture(1, this._dustTexture.get_texture());
+        pipeline.set_layer_wrap_mode(1, Cogl.PipelineWrapMode.REPEAT);
+        pipeline.set_uniform_1i(shader._uDustTexture, 1);
       });
     });
   }
 
-
   // ---------------------------------------------------------------------------- metadata
 
-  // The effect is available on all GNOME Shell versions supported by this extension.
+  // This effect is only available on GNOME Shell 40+.
   getMinShellVersion() {
-    return [3, 36];
+    return [40, 0];
   }
 
   // This will be called in various places where a unique identifier for this effect is
@@ -71,13 +108,13 @@ var EnergizeB = class {
   // effect is enabled currently (e.g. '*-close-effect'), and its animation time
   // (e.g. '*-animation-time').
   getNick() {
-    return 'energize-b';
+    return 'snap';
   }
 
   // This will be shown in the sidebar of the preferences dialog as well as in the
   // drop-down menus where the user can choose the effect.
   getLabel() {
-    return _('Energize B');
+    return _('Snap of Disintegration');
   }
 
   // -------------------------------------------------------------------- API for prefs.js
@@ -87,15 +124,15 @@ var EnergizeB = class {
   getPreferences(dialog) {
 
     // Add the settings page to the builder.
-    dialog.getBuilder().add_from_resource(`/ui/${utils.getGTKString()}/EnergizeB.ui`);
+    dialog.getBuilder().add_from_resource('/ui/gtk4/SnapOfDisintegration.ui');
 
     // Bind all properties.
-    dialog.bindAdjustment('energize-b-animation-time');
-    dialog.bindAdjustment('energize-b-scale');
-    dialog.bindColorButton('energize-b-color');
+    dialog.bindAdjustment('snap-animation-time');
+    dialog.bindAdjustment('snap-scale');
+    dialog.bindColorButton('snap-color');
 
     // Finally, return the new settings page.
-    return dialog.getBuilder().get_object('energize-b-prefs');
+    return dialog.getBuilder().get_object('snap-prefs');
   }
 
   // ---------------------------------------------------------------- API for extension.js
@@ -104,6 +141,6 @@ var EnergizeB = class {
   // animation. This is useful if the effect requires drawing something beyond the usual
   // bounds of the actor. This only works for GNOME 3.38+.
   getActorScale(settings) {
-    return {x: 1.0, y: 1.0};
+    return {x: 1.2, y: 1.2};
   }
 }

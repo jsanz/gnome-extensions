@@ -77,7 +77,7 @@ const GithubNotifications = new Lang.Class({
       this.lazyInit();
     }
     this.fetchNotifications();
-    Main.panel._leftBox.insert_child_at_index(this.box, 10);
+    Main.panel._leftBox.insert_child_at_index(this.box, -1);
   },
 
   stop: function() {

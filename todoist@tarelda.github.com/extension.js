@@ -328,7 +328,7 @@ function init() {
 
 function enable() {
   _extensionInstance = new TodoistIndicator;
-  Main.panel.addToStatusArea("todoist-indicator", _extensionInstance, 3, 'left');
+  Main.panel.addToStatusArea("todoist-indicator", _extensionInstance, 2, 'left');
 }
 
 function disable() {

@@ -23,13 +23,14 @@ const utils          = Me.imports.src.utils;
 const ShaderFactory  = Me.imports.src.ShaderFactory.ShaderFactory;
 
 //////////////////////////////////////////////////////////////////////////////////////////
-// This effect looks a bit like the transporter effect from TNG.                        //
+// This effect overlays a glowing hexagonal grid over the window. The grid cells then   //
+// gradually shrink until the window is fully dissolved.                                //
 //////////////////////////////////////////////////////////////////////////////////////////
 
 // The effect class can be used to get some metadata (like the effect's name or supported
 // GNOME Shell versions), to initialize the respective page of the settings dialog, as
 // well as to create the actual shader for the effect.
-var EnergizeB = class {
+var Hexagon = class {
 
   // The constructor creates a ShaderFactory which will be used by extension.js to create
   // shader instances for this effect. The shaders will be automagically created using the
@@ -43,21 +44,37 @@ var EnergizeB = class {
       const Clutter = imports.gi.Clutter;
 
       // Store uniform locations of newly created shaders.
-      shader._uColor = shader.get_uniform_location('uColor');
-      shader._uScale = shader.get_uniform_location('uScale');
+      shader._uAdditiveBlending = shader.get_uniform_location('uAdditiveBlending');
+      shader._uSeed             = shader.get_uniform_location('uSeed');
+      shader._uScale            = shader.get_uniform_location('uScale');
+      shader._uLineWidth        = shader.get_uniform_location('uLineWidth');
+      shader._uGlowColor        = shader.get_uniform_location('uGlowColor');
+      shader._uLineColor        = shader.get_uniform_location('uLineColor');
 
       // Write all uniform values at the start of each animation.
       shader.connect('begin-animation', (shader, settings) => {
-        const c = Clutter.Color.from_string(settings.get_string('energize-b-color'))[1];
+        // Get the two configurable colors. They are directly injected into the shader
+        // code below.
+        const gc =
+          Clutter.Color.from_string(settings.get_string('hexagon-glow-color'))[1];
+        const lc =
+          Clutter.Color.from_string(settings.get_string('hexagon-line-color'))[1];
+
+        // If we are currently performing integration test, the animation uses a fixed
+        // seed.
+        const testMode = settings.get_boolean('test-mode');
 
         // clang-format off
-        shader.set_uniform_float(shader._uColor, 3, [c.red / 255, c.green / 255, c.blue / 255]);
-        shader.set_uniform_float(shader._uScale, 1, [settings.get_double('energize-b-scale')]);
+        shader.set_uniform_float(shader._uAdditiveBlending, 1, [settings.get_boolean('hexagon-additive-blending')]);
+        shader.set_uniform_float(shader._uSeed,             2, [testMode ? 0 : Math.random(), testMode ? 0 : Math.random()]);
+        shader.set_uniform_float(shader._uScale,            1, [settings.get_double('hexagon-scale')]);
+        shader.set_uniform_float(shader._uLineWidth,        1, [settings.get_double('hexagon-line-width')]);
+        shader.set_uniform_float(shader._uGlowColor,        4, [gc.red / 255, gc.green / 255, gc.blue / 255, gc.alpha / 255]);
+        shader.set_uniform_float(shader._uLineColor,        4, [lc.red / 255, lc.green / 255, lc.blue / 255, lc.alpha / 255]);
         // clang-format on
       });
     });
   }
-
 
   // ---------------------------------------------------------------------------- metadata
 
@@ -71,13 +88,13 @@ var EnergizeB = class {
   // effect is enabled currently (e.g. '*-close-effect'), and its animation time
   // (e.g. '*-animation-time').
   getNick() {
-    return 'energize-b';
+    return 'hexagon';
   }
 
   // This will be shown in the sidebar of the preferences dialog as well as in the
   // drop-down menus where the user can choose the effect.
   getLabel() {
-    return _('Energize B');
+    return _('Hexagon');
   }
 
   // -------------------------------------------------------------------- API for prefs.js
@@ -87,15 +104,18 @@ var EnergizeB = class {
   getPreferences(dialog) {
 
     // Add the settings page to the builder.
-    dialog.getBuilder().add_from_resource(`/ui/${utils.getGTKString()}/EnergizeB.ui`);
+    dialog.getBuilder().add_from_resource(`/ui/${utils.getGTKString()}/Hexagon.ui`);
 
     // Bind all properties.
-    dialog.bindAdjustment('energize-b-animation-time');
-    dialog.bindAdjustment('energize-b-scale');
-    dialog.bindColorButton('energize-b-color');
+    dialog.bindAdjustment('hexagon-animation-time');
+    dialog.bindAdjustment('hexagon-scale');
+    dialog.bindAdjustment('hexagon-line-width');
+    dialog.bindColorButton('hexagon-line-color');
+    dialog.bindColorButton('hexagon-glow-color');
+    dialog.bindSwitch('hexagon-additive-blending');
 
     // Finally, return the new settings page.
-    return dialog.getBuilder().get_object('energize-b-prefs');
+    return dialog.getBuilder().get_object('hexagon-prefs');
   }
 
   // ---------------------------------------------------------------- API for extension.js
