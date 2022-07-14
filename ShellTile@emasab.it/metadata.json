@@ -5,7 +5,6 @@
   "name": "ShellTile",
   "settings-schema": "org.gnome.shell.extensions.shelltile",
   "shell-version": [
-    "3.6",
     "3.8",
     "3.10",
     "3.12",
@@ -25,5 +24,5 @@
   ],
   "url": "https://github.com/emasab/shelltile",
   "uuid": "ShellTile@emasab.it",
-  "version": 65
+  "version": 69
 }
